@@ -1,39 +1,79 @@
-# Creating Testnet XRPL Conditional Escrows
+# XRPL conditional escrows (testnet)
 
-XRPL DOCS(https://xrpl.org/)<br><br>
-__Requirements to create testnet escrows:__
- - Two funded xrpl testnet wallets (https://xrpl.org/xrp-testnet-faucet.html)
+Small TypeScript utilities to build **PREIMAGE-SHA-256** conditions with [`five-bells-condition`](https://github.com/interledgerjs/five-bells-condition), submit **`EscrowCreate`** on the [XRPL](https://xrpl.org/), and complete the hold with **`EscrowFinish`** when you have the fulfillment preimage.
 
----
-<br>
+## Prerequisites
 
-After creating 2 test wallets with the xrpl testnet faucet, and funding the accounts. You are ready to create your own escrows that generate a password(fulfillment hash) to release an escrowed funds.
+- Node.js **18.18+**
+- Two funded **testnet** accounts ([faucet](https://xrpl.org/xrp-testnet-faucet.html))
 
-You will only need the 2 functions imported into index.js file. These functions escrowCreate() and fulfillEscrow() are all you will need.
-<br><br>
+**Security:** Never commit wallet seeds or `.env`. Copy `.env.example` to `.env` and keep it local. If seeds were ever pushed to a public remote, treat them as compromised and use new testnet wallets.
 
-1. First you must use createEscrow() inputting 4 parameters in this order: 
-    1. @string - __wallet seed(private key) from created test wallet (starts with s).__
-    __This address will be the wallet that is sending the funds to be escrowed and initiating the escrowCreate transaction method.__
-    2. @string - __wallet rAddress to receive escrowed funds once correct fulfillment hash( password ) is given to fulfillEscrow function.__
-    3. @number - __amount of xrp to be taken from wallet funding escrow.__
-    4. @number - __time in hours until escrow is expired and funds are returned to walllet that funded escrow.__
-    <br><br>
-    
-    After running this function with correct parameters, an escrow will be created. This escrow will contain specified amount of xrp, and will not be able to send password to fullfill after specified expiration time in hrs.
+## Install
 
-    You will be returned a object from this function containing the transaction hash and the password hash to redeem this created escrow node.
-    <br><br>
+```bash
+npm install
+```
 
-2. You can then run fulfillEscrow(). This function takes 3 parameters in this specifc order:
+## Build
 
-    1. @string - __wallet seed(private key) from created test wallet (starts with s). Can be seed of any wallet, including the wallet that created escrow. Whichever wallet is being used to send fulfillment transaction.__
-    2. @string - __transaction hash from the transaction that contains the successfully created escrow. This hash is returned from step 1 along with the fulfillment hash__
-    3. @string - __fulfillment hash(password) generated from step 1. Used to successfully fulfill the escrows set condition.__
-    <br><br>
+```bash
+npm run build
+```
 
-    After running this function on a valid escrow tx hash and fulfillment hash(password)- returned from step 1. If escrow hash and fulfillment hash(password) are valid, escrowed funds are released to destination wallet. As long as it is before the set expiration time of the specifc escrow. 
-    
+Consuming projects can depend on this package and import from `dist/` after build, or copy the `src/` patterns into their own codebase.
 
+## API
 
+### `createEscrow(initiatorSeed, destinationAddress, amountXrp, cancelAfterHours, wssUrl?)`
 
+Creates a conditional escrow from the initiator’s balance toward `destinationAddress`. Returns:
+
+- `escrowHash` — ledger hash of the `EscrowCreate` (needed for finish)
+- `fulfillment` — hex fulfillment (“password”); **keep private** until you intend to release funds
+
+On failure, throws with the engine result (e.g. not enough XRP, bad destination).
+
+### `fulfillEscrow(walletSeed, escrowCreateTxHash, fulfillmentHex, wssUrl?)`
+
+Submits `EscrowFinish` signed by `walletSeed` (any funded account can pay the fee). Uses the **EscrowCreate** transaction hash to load `Owner`, `Sequence`, and `Condition` from the ledger.
+
+Returns `{ success, message, engineResult? }` instead of throwing on `tec`/`tel` outcomes so you can branch in application code.
+
+### Other exports
+
+- `createConditionAndFulfillment()` — condition/fulfillment pair only (no ledger I/O)
+- `buildEscrowCreateTransaction(...)` — unsigned `EscrowCreate` JSON (for tests or custom signing)
+- `fetchTransaction(client, hash)` — `tx` request helper
+- `fetchTwoWalletSnapshots(seedA, seedB)` — validated balances for two seeds
+- `XRPL_TESTNET_WSS` — default `wss://s.altnet.rippletest.net/`
+
+## Example script
+
+After `npm run build`:
+
+```bash
+cp .env.example .env
+# edit .env with testnet seed + destination r-address
+npm run example
+```
+
+Uncomment the `createEscrow` / `fulfillEscrow` blocks in [`src/example.ts`](src/example.ts) when you are ready to hit the network.
+
+## Development
+
+| Command        | Description                |
+| -------------- | -------------------------- |
+| `npm run lint` | ESLint (TypeScript-aware)  |
+| `npm test`     | Vitest unit tests          |
+| `npm run build`| `tsc` → `dist/`            |
+
+Optional on-ledger test: set `INTEGRATION_TEST_SEED` and `INTEGRATION_DESTINATION` in the environment, then run `npm test` (creates a minimal escrow on testnet).
+
+## Dependencies
+
+This project uses [`xrpl`](https://github.com/XRPLF/xrpl.js) **v2.x**. `npm audit` may still report low-severity advisories in transitive crypto libraries; upgrading to **xrpl v4+** is the upstream path if you need a clean audit report.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
